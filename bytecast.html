@@ -1425,7 +1425,7 @@
         <div class="episode-group" id="ep-03">
           <div class="group-label">State of the Build · Big Picture</div>
 
-          <article class="episode-card" data-episode="EP 03" data-audio="audio/ep3.mp3">
+          <article class="episode-card" data-episode="EP 03">
             <div class="episode-header-row">
               <div>
                 <div class="ep-id">EP 03</div>
@@ -1436,13 +1436,21 @@
             </div>
             <div class="episode-body">
               <div class="body-inner">
-                <div class="audio-player">
-                  <button class="play-toggle" aria-label="Play episode">▶</button>
+                <div class="audio-player" data-audio="audio/ep3.pt1.mp3">
+                  <button class="play-toggle" aria-label="Play episode part 1">▶</button>
                   <div class="audio-meta">
-                    <div class="audio-title">EP 03 — Big Picture & What&apos;s Next</div>
+                    <div class="audio-title">EP 03 — Part 1: Big Picture & What&apos;s Next</div>
                     <div class="audio-track" role="slider" aria-label="Audio progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"><div class="audio-progress" aria-hidden="true"></div></div>
                   </div>
-                  <div class="audio-time">10:03</div>
+                  <div class="audio-time">–:––</div>
+                </div>
+                <div class="audio-player" data-audio="audio/ep3.pt2.mp3" style="margin-top: 0.75rem;">
+                  <button class="play-toggle" aria-label="Play episode part 2">▶</button>
+                  <div class="audio-meta">
+                    <div class="audio-title">EP 03 — Part 2: Big Picture & What&apos;s Next</div>
+                    <div class="audio-track" role="slider" aria-label="Audio progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"><div class="audio-progress" aria-hidden="true"></div></div>
+                  </div>
+                  <div class="audio-time">–:––</div>
                 </div>
                 <p class="ep-summary">
                   This episode pulls together everything built so far — from infrastructure and divisions to music, tools, and reporting — and explains in everyday language why it all matters. It focuses on what team members, partners, and end users will actually notice as AeroVista moves from internal buildout into lived experience.
@@ -1563,6 +1571,7 @@
       const audio = new Audio();
       audio.preload = 'metadata';
       let currentEpisodeCard = null;
+      let currentAudioPlayer = null;
       let currentAudioSrc = null;
       let isPlaying = false;
       let isLoading = false;
@@ -1586,15 +1595,25 @@
       }
 
       // Update Now Playing bar from episode card
-      function setNowPlayingFromCard(card) {
+      function setNowPlayingFromCard(card, audioPlayer) {
         const epIdEl = card.querySelector('.ep-id');
         const titleEl = card.querySelector('.ep-title');
-        const timeEl = card.querySelector('.audio-time');
+        
+        // If audioPlayer is provided, use its title instead of card title
+        let audioTitleEl = null;
+        let timeEl = null;
+        if (audioPlayer) {
+          audioTitleEl = audioPlayer.querySelector('.audio-title');
+          timeEl = audioPlayer.querySelector('.audio-time');
+        } else {
+          timeEl = card.querySelector('.audio-time');
+        }
 
         if (!epIdEl || !titleEl) return;
 
         const epId = epIdEl.textContent.trim();
-        const epTitle = titleEl.textContent.trim();
+        // Use audio player title if available, otherwise use card title
+        const epTitle = audioTitleEl ? audioTitleEl.textContent.trim() : titleEl.textContent.trim();
         const duration = timeEl ? timeEl.textContent.trim() : '–:––';
 
         if (nowTitle) nowTitle.textContent = epTitle;
@@ -1634,31 +1653,29 @@
             audio.removeEventListener('error', onError);
           };
           
-          const onCanPlay = () => {
-            cleanup();
+          const removeLoading = () => {
             isLoading = false;
             if (currentEpisodeCard) {
               currentEpisodeCard.classList.remove('loading');
             }
+          };
+          
+          const onCanPlay = () => {
+            cleanup();
+            removeLoading();
             resolve();
           };
           
           const onCanPlayThrough = () => {
             // Also handle canplaythrough for better reliability
             cleanup();
-            isLoading = false;
-            if (currentEpisodeCard) {
-              currentEpisodeCard.classList.remove('loading');
-            }
+            removeLoading();
             resolve();
           };
           
           const onError = (e) => {
             cleanup();
-            isLoading = false;
-            if (currentEpisodeCard) {
-              currentEpisodeCard.classList.remove('loading');
-            }
+            removeLoading();
             reject(e);
           };
           
@@ -1679,10 +1696,11 @@
 
         const percent = (audio.currentTime / audio.duration) * 100;
 
-        // Update progress in current episode card
-        if (currentEpisodeCard) {
-          const progressBar = currentEpisodeCard.querySelector('.audio-progress');
-          const trackBar = currentEpisodeCard.querySelector('.audio-track');
+        // Update progress in current audio player (or fall back to card if no specific player)
+        const targetElement = currentAudioPlayer || currentEpisodeCard;
+        if (targetElement) {
+          const progressBar = targetElement.querySelector('.audio-progress');
+          const trackBar = targetElement.querySelector('.audio-track');
           if (progressBar) {
             progressBar.style.width = percent + '%';
           }
@@ -1690,7 +1708,7 @@
             trackBar.setAttribute('aria-valuenow', Math.round(percent));
             trackBar.setAttribute('aria-valuetext', formatTime(audio.currentTime) + ' of ' + formatTime(audio.duration));
           }
-          const timeEl = currentEpisodeCard.querySelector('.audio-time');
+          const timeEl = targetElement.querySelector('.audio-time');
           if (timeEl) {
             timeEl.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
           }
@@ -1742,10 +1760,12 @@
       function updatePlayButtonStates() {
         const playButtons = document.querySelectorAll('.play-toggle');
         playButtons.forEach(btn => {
-          const isCurrentCardButton = currentEpisodeCard && btn.closest('.episode-card') === currentEpisodeCard;
+          const btnAudioPlayer = btn.closest('.audio-player');
+          const isCurrentAudioPlayerButton = currentAudioPlayer && btnAudioPlayer === currentAudioPlayer;
+          const isCurrentCardButton = currentEpisodeCard && btn.closest('.episode-card') === currentEpisodeCard && !currentAudioPlayer;
           const isNowPlayingButton = btn.id === 'nowPlayingToggle';
           
-          if (isPlaying && (isCurrentCardButton || isNowPlayingButton)) {
+          if (isPlaying && (isCurrentAudioPlayerButton || isCurrentCardButton || isNowPlayingButton)) {
             btn.textContent = '⏸';
             btn.setAttribute('aria-label', 'Pause episode');
           } else {
@@ -1754,7 +1774,7 @@
           }
           
           // Disable button while loading
-          if (isLoading && (isCurrentCardButton || isNowPlayingButton)) {
+          if (isLoading && (isCurrentAudioPlayerButton || isCurrentCardButton || isNowPlayingButton)) {
             btn.disabled = true;
           } else {
             btn.disabled = false;
@@ -1763,27 +1783,32 @@
       }
 
       // Set active episode card
-      function setActiveEpisode(card) {
-        // Remove playing class from all cards and reset their progress
+      function setActiveEpisode(card, audioPlayer) {
+        // Remove playing class from all cards and reset all audio players' progress
         document.querySelectorAll('.episode-card').forEach(c => {
           c.classList.remove('playing', 'loading');
-          const progressBar = c.querySelector('.audio-progress');
-          const trackBar = c.querySelector('.audio-track');
-          if (progressBar) {
-            progressBar.style.width = '0%';
-          }
-          if (trackBar) {
-            trackBar.setAttribute('aria-valuenow', '0');
-          }
+          // Reset all audio players in each card
+          c.querySelectorAll('.audio-player').forEach(player => {
+            const progressBar = player.querySelector('.audio-progress');
+            const trackBar = player.querySelector('.audio-track');
+            if (progressBar) {
+              progressBar.style.width = '0%';
+            }
+            if (trackBar) {
+              trackBar.setAttribute('aria-valuenow', '0');
+            }
+          });
         });
 
         // Add playing class to current card
         if (card) {
           card.classList.add('playing');
           currentEpisodeCard = card;
-          // Reset progress for new card
-          const progressBar = card.querySelector('.audio-progress');
-          const trackBar = card.querySelector('.audio-track');
+          currentAudioPlayer = audioPlayer || null;
+          // Reset progress for the active audio player
+          const targetElement = audioPlayer || card;
+          const progressBar = targetElement.querySelector('.audio-progress');
+          const trackBar = targetElement.querySelector('.audio-track');
           if (progressBar) {
             progressBar.style.width = '0%';
           }
@@ -1841,8 +1866,9 @@
       audio.addEventListener('ended', () => {
         isPlaying = false;
         updatePlayButtonStates();
-        if (currentEpisodeCard) {
-          const progressBar = currentEpisodeCard.querySelector('.audio-progress');
+        const targetElement = currentAudioPlayer || currentEpisodeCard;
+        if (targetElement) {
+          const progressBar = targetElement.querySelector('.audio-progress');
           if (progressBar) progressBar.style.width = '0%';
         }
       });
@@ -1874,7 +1900,13 @@
           const card = this.closest('.episode-card');
           if (!card) return;
 
-          const audioSrc = card.getAttribute('data-audio');
+          // Check for data-audio on the audio-player container first, then fall back to card
+          const audioPlayer = this.closest('.audio-player');
+          let audioSrc = audioPlayer ? audioPlayer.getAttribute('data-audio') : null;
+          if (!audioSrc) {
+            audioSrc = card.getAttribute('data-audio');
+          }
+          
           if (!audioSrc) {
             console.warn('No audio source found for episode card');
             if (nowTitle) {
@@ -1887,15 +1919,15 @@
             return;
           }
 
-          // If clicking the same episode, toggle play/pause
-          if (currentEpisodeCard === card && currentAudioSrc === audioSrc) {
+          // If clicking the same audio source, toggle play/pause
+          if (currentAudioSrc === audioSrc) {
             togglePlayback();
             return;
           }
 
           // Load and play new episode
-          setActiveEpisode(card);
-          setNowPlayingFromCard(card);
+          setActiveEpisode(card, audioPlayer);
+          setNowPlayingFromCard(card, audioPlayer);
           loadAudio(audioSrc).then(() => {
             // Audio is ready, now play it
             return audio.play();
